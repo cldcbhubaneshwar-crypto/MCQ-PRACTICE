@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Quiz host</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script></head>
+<body><main style="max-width:860px">
+<h1>Quiz host</h1>
+<div class="card"><input id="pw" type="password" placeholder="Admin password">
+<div style="display:flex;gap:8px"><input id="min" type="number" value="60" style="max-width:110px" title="minutes">
+<input id="cnt2" type="number" value="50" style="max-width:110px" title="number of questions">
+<button onclick="act('start',{minutes:+min.value,count:+cnt2.value,topics:sel()})">Start (minutes / questions)</button><button class="sec" onclick="act('stop')">Stop</button>
+<button class="sec" onclick="if(confirm('Delete ALL results?'))act('reset')">Reset</button></div><p id="msg" class="mute"></p>
+<details open><summary><b>Topics</b> (none ticked = all topics)</summary>
+<button class="sec" style="width:auto" onclick="document.querySelectorAll('.tp').forEach(c=>c.checked=false)">Clear</button>
+<div id="topics"></div></details></div>
+<div class="card" style="text-align:center"><div id="qr" style="display:inline-block;background:#fff;padding:12px"></div>
+<p>Participants scan to join:<br><b id="url"></b></p></div>
+<div class="card"><h2>Ranking <span id="cnt" class="mute"></span></h2>
+<button class="sec" onclick="load()">Refresh</button><button class="sec" onclick="csv()">Download CSV</button>
+<table><thead><tr><th>#</th><th>Name</th><th>ID</th><th>Score</th><th>Time</th><th>Topic-wise</th></tr></thead><tbody id="rows"></tbody></table></div>
+</main><script>
+const u=location.origin+'/';url.textContent=u;new QRCode(qr,{text:u,width:220,height:220});
+let rows=[];const H=()=>({'x-admin':pw.value});
+const tw=x=>Object.entries(x.byTopic||{}).map(([k,v])=>k+' '+v[0]+'/'+v[1]).join('; ');
+const sel=()=>[...document.querySelectorAll('.tp:checked')].map(c=>c.value);
+async function loadTopics(){const r=await fetch('/api/admin/topics',{headers:H()});if(!r.ok)return;const d=await r.json();
+ topics.innerHTML=d.topics.map(t=>`<label style="display:block"><input type="checkbox" class="tp" style="width:auto;margin-right:8px" value="${t.name}">${t.name} (${t.n})</label>`).join('')}
+pw.addEventListener('change',()=>{loadTopics();load()});
+const fmt=ms=>Math.floor(ms/60000)+'m '+Math.floor(ms/1000%60)+'s';
+async function act(a,b){const r=await fetch('/api/admin/'+a,{method:'POST',headers:H(),body:JSON.stringify(b||{})});
+ msg.textContent=r.ok?'Done: '+a:(await r.json()).error;if(r.ok)load()}
+async function load(){const r=await fetch('/api/admin/results',{headers:H()});if(!r.ok){msg.textContent=(await r.json()).error;return}
+ const d=await r.json();rows=d.rows;cnt.textContent=`(${d.rows.length} submitted / ${d.joined} joined)`;
+ document.getElementById('rows').innerHTML=rows.map((x,i)=>`<tr><td>${i+1}</td><td>${x.name}</td><td>${x.ref||''}</td><td>${x.score}/${x.total}</td><td>${fmt(x.timeMs)}</td><td>${tw(x)}</td></tr>`).join('')}
+function csv(){const t='Rank,Name,ID,Score,Total,Time(s),Topic-wise\n'+rows.map((x,i)=>[i+1,'"'+x.name+'"',x.ref,x.score,x.total,Math.round(x.timeMs/1000),'"'+tw(x)+'"'].join(',')).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t]));a.download='results.csv';a.click()}
+setInterval(()=>{if(pw.value)load()},30000);
+</script></body></html>

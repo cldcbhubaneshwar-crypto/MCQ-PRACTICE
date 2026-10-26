@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Live Quiz</title>
+<link rel="stylesheet" href="style.css"></head><body><main id="app"></main>
+<script>
+const $=document.getElementById('app');let S=null,answers=[],cur=0,timer=null;
+const api=async(p,b)=>{const r=await fetch('/api/'+p,b?{method:'POST',body:JSON.stringify(b)}:{});const d=await r.json();if(!r.ok)throw Object.assign(new Error(d.error),d);return d};
+const fmt=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+async function home(msg){let st;try{st=await api('state')}catch{st={status:'waiting'}}
+ const saved=JSON.parse(localStorage.getItem('quizSession')||'null');
+ $.innerHTML=`<h1>Live Quiz</h1><div class="card">
+ ${st.status==='running'?`<p>${st.total} questions. Closes in <b>${fmt(st.endsAt-st.now)}</b>.</p>
+ <input id="n" placeholder="Your full name" value="${saved?.name||''}"><input id="r" placeholder="Roll / employee ID (optional)">
+ <button onclick="join()">Start quiz</button>`:st.status==='ended'?'<p>This quiz has ended.</p>':'<p>Waiting for the host to start. This page refreshes automatically.</p>'}
+ <p class="err">${msg||''}</p></div>`;
+ if(st.status!=='running'&&st.status!=='ended')setTimeout(()=>home(),4000)}
+async function join(){try{const d=await api('join',{name:n.value,ref:r.value});
+ const old=JSON.parse(localStorage.getItem('quizSession')||'null');
+ S=d;answers=old&&old.id===d.id?old.answers:[];cur=0;save();const st=await api('state');S.endsAt=st.endsAt-(st.now-Date.now());show()}catch(e){home(e.message)}}
+const save=()=>localStorage.setItem('quizSession',JSON.stringify({id:S.id,name:S.name,answers}));
+function show(){clearInterval(timer);const q=S.questions[cur];
+ $.innerHTML=`<div class="bar"><span>Q ${cur+1}/${S.questions.length}</span><span id="t"></span></div>
+ <div class="card"><p class="mute">${q.topic||''}</p><h3>${q.q}</h3>${q.options.map((o,i)=>`<button class="opt ${answers[cur]===i?'sel':''}" onclick="pick(${i})">${o}</button>`).join('')}</div>
+ <button class="sec" ${cur?'':'disabled'} onclick="cur--;show()">Previous</button>
+ ${cur<S.questions.length-1?'<button onclick="cur++;show()">Next</button>':'<button onclick="finish()">Submit quiz</button>'}
+ <p class="mute">Answered ${answers.filter(a=>a!==undefined).length} of ${S.questions.length}</p>`;
+ const tick=()=>{const left=S.endsAt-Date.now();t.textContent=fmt(left);if(left<=0){clearInterval(timer);finish()}};tick();timer=setInterval(tick,1000)}
+function pick(i){answers[cur]=i;save();show()}
+async function finish(){clearInterval(timer);try{const d=await api('submit',{id:S.id,answers:Array.from(answers,a=>a??-1)});
+ localStorage.removeItem('quizSession');$.innerHTML=`<div class="card"><h2>Submitted</h2><p>Your score: <b>${d.score} / ${d.total}</b></p><p class="mute">Ask the host for the ranking.</p></div>`}
+ catch(e){$.innerHTML=`<div class="card"><p class="err">${e.message}</p></div>`}}
+home();
+</script></body></html>
